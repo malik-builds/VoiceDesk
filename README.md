@@ -100,6 +100,8 @@ static/
 
 CI validates the Docker build on every push to `main` via GitHub Actions.
 
+Use Docker, it's quicker, this will soon be deployed overtime.
+
 ```bash
 # Local
 docker compose up --build
