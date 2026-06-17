@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceDesk</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3e;
+      --accent: #6c63ff;
+      --text: #e2e4f0;
+      --text-muted: #7b7fa8;
+      --user-bubble: #1e3a5f;
+      --agent-bubble: #1a1d27;
+      --success: #22c55e;
+      --danger: #ef4444;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 700; }
+    header span { font-size: 0.75rem; color: var(--text-muted); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .config-panel {
+      border-right: 1px solid var(--border);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      overflow-y: auto;
+    }
+    .config-panel h2 {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+    }
+    .field label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.35rem; }
+    .field input, .field textarea {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); }
+    .field textarea { resize: vertical; min-height: 80px; }
+
+    .call-panel { display: flex; flex-direction: column; overflow: hidden; }
+
+    .call-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    #status { font-size: 0.85rem; color: var(--text-muted); flex: 1; }
+
+    .pulse-ring {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: none;
+      position: relative;
+    }
+    .pulse-ring::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid var(--accent);
+      animation: pulse 1s ease-out infinite;
+    }
+    .pulse-ring.active { display: block; }
+    @keyframes pulse {
+      0%   { transform: scale(1); opacity: 0.8; }
+      100% { transform: scale(1.8); opacity: 0; }
+    }
+
+    #transcript {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .bubble {
+      max-width: 70%;
+      padding: 0.6rem 0.9rem;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+    .bubble.user  { align-self: flex-end; background: var(--user-bubble); border-bottom-right-radius: 2px; }
+    .bubble.agent { align-self: flex-start; background: var(--agent-bubble); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+    .bubble.partial { align-self: flex-end; color: var(--text-muted); font-style: italic; background: transparent; font-size: 0.8rem; }
+
+    #booking-banner {
+      display: none;
+      margin: 0 1.5rem 1rem;
+      background: #14532d;
+      border: 1px solid var(--success);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      color: #bbf7d0;
+    }
+
+    .call-controls { padding: 1rem 1.5rem; border-top: 1px solid var(--border); }
+    #call-btn {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      transition: background 0.15s;
+    }
+    #call-btn:hover { background: #7c75ff; }
+    #call-btn.active { background: var(--danger); }
+    #call-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>VoiceDesk</h1>
+  <span>AI Voice Receptionist</span>
+</header>
+
+<div class="layout">
+  <aside class="config-panel">
+    <h2>Business Config</h2>
+    <div class="field">
+      <label for="company">Company Name</label>
+      <input id="company" type="text" value="Bright Smile Dental" />
+    </div>
+    <div class="field">
+      <label for="receptionist">Receptionist Name</label>
+      <input id="receptionist" type="text" value="George" />
+    </div>
+    <div class="field">
+      <label for="instructions">Custom Instructions</label>
+      <textarea id="instructions">Modern dental practice in Melbourne. Services: check-ups, fillings, whitening, root canals, Invisalign. Mon–Fri 8am–6pm, Sat 9am–2pm.</textarea>
+    </div>
+    <p style="font-size:0.75rem;color:var(--text-muted);margin-top:auto;">
+      Changes apply on next call start.
+    </p>
+  </aside>
+
+  <main class="call-panel">
+    <div class="call-header">
+      <div class="pulse-ring" id="speaking-ring"></div>
+      <span id="status">Idle — press Start Call to begin</span>
+    </div>
+    <div id="transcript"></div>
+    <div id="booking-banner"></div>
+    <div class="call-controls">
+      <button id="call-btn">Start Call</button>
+    </div>
+  </main>
+</div>
+
+<script>
+  // ── Constants ─────────────────────────────────────────────────────────────
+  const TARGET_SR         = 24000;
+  const SCRIPT_BUF_SIZE   = 4096;
+  const MIN_CHUNK_SAMPLES = 2048;
+
+  // Client-side VAD for Valsea — sends audio.commit after genuine silence.
+  // Tune these if speech is still getting cut off or commits are too slow.
+  const VAD_SILENCE_RMS       = 0.01;   // amplitude below this = silence
+  const VAD_SILENCE_MS        = 1400;   // ms of silence before commit
+  const VAD_SPEECH_CONFIRM_MS = 120;    // ms of speech needed to "open" the gate
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const callBtn      = document.getElementById("call-btn");
+  const statusEl     = document.getElementById("status");
+  const transcriptEl = document.getElementById("transcript");
+  const ringEl       = document.getElementById("speaking-ring");
+  const bannerEl     = document.getElementById("booking-banner");
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let ws            = null;
+  let isCallActive  = false;
+  let sttReady      = false;
+  let agentSpeaking = false;
+
+  // Audio capture
+  let mediaStream   = null;
+  let audioCtx      = null;
+  let sourceNode    = null;
+  let scriptNode    = null;
+
+  // Client-side VAD state (used when STT_PROVIDER=valsea)
+  let vadSpeaking       = false;    // true while user's voice is above threshold
+  let vadSilenceTimer   = null;     // fires audio.commit after silence
+  let vadSpeechTimer    = null;     // confirms speech is real, not a click
+
+  // Streaming TTS playback
+  let ttsAudio        = null;
+  let mediaSource     = null;
+  let sourceBuffer    = null;
+  let audioQueue      = [];
+  let msOpen          = false;
+  let streamEnding    = false;
+
+  // Transcript
+  let partialEl     = null;
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function setStatus(text) { statusEl.textContent = text; }
+
+  function appendBubble(text, side) {
+    const el = document.createElement("div");
+    el.className = `bubble ${side}`;
+    el.textContent = text;
+    transcriptEl.appendChild(el);
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    return el;
+  }
+
+  // ── PCM helpers ───────────────────────────────────────────────────────────
+  function downsample(buf, fromRate, toRate) {
+    if (fromRate === toRate) return buf;
+    const ratio  = fromRate / toRate;
+    const result = new Float32Array(Math.round(buf.length / ratio));
+    for (let i = 0; i < result.length; i++) {
+      const start = Math.round(i * ratio);
+      const end   = Math.round((i + 1) * ratio);
+      let acc = 0, n = 0;
+      for (let j = start; j < end && j < buf.length; j++) { acc += buf[j]; n++; }
+      result[i] = n ? acc / n : 0;
+    }
+    return result;
+  }
+
+  function floatTo16Bit(f32) {
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      const s = Math.max(-1, Math.min(1, f32[i]));
+      i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return i16;
+  }
+
+  function int16ToBase64(i16) {
+    const bytes = new Uint8Array(i16.buffer);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  function base64ToUint8(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  // ── Streaming TTS playback (MediaSource) ─────────────────────────────────
+  function setupPlayback() {
+    if (ttsAudio) {
+      ttsAudio.pause();
+      if (ttsAudio.src) URL.revokeObjectURL(ttsAudio.src);
+      ttsAudio.src = "";
+    }
+    ttsAudio      = new Audio();
+    mediaSource   = new MediaSource();
+    sourceBuffer  = null;
+    audioQueue    = [];
+    msOpen        = false;
+    streamEnding  = false;
+
+    ttsAudio.src = URL.createObjectURL(mediaSource);
+
+    mediaSource.addEventListener("sourceopen", () => {
+      msOpen       = true;
+      sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+      sourceBuffer.mode = "sequence";
+      sourceBuffer.addEventListener("updateend", flushQueue);
+      flushQueue();
+    });
+  }
+
+  function flushQueue() {
+    if (!sourceBuffer || sourceBuffer.updating) return;
+    if (audioQueue.length) {
+      sourceBuffer.appendBuffer(audioQueue.shift());
+    } else if (streamEnding && mediaSource && mediaSource.readyState === "open") {
+      try { mediaSource.endOfStream(); } catch {}
+      streamEnding = false;
+    }
+  }
+
+  function enqueueChunk(b64) {
+    if (!msOpen || !sourceBuffer) return;
+    audioQueue.push(base64ToUint8(b64));
+    flushQueue();
+    if (ttsAudio && ttsAudio.paused) ttsAudio.play().catch(() => {});
+  }
+
+  function finishStream() {
+    streamEnding = true;
+    flushQueue();
+  }
+
+  // ── WebSocket message handler ─────────────────────────────────────────────
+  function handleMessage(evt) {
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+
+    switch (msg.type) {
+      case "session.started":
+        setStatus("Session started — waiting for STT…");
+        break;
+
+      case "stt.ready":
+        sttReady = true;
+        setStatus("Listening…");
+        break;
+
+      case "agent.turn":
+        appendBubble(msg.text, "agent");
+        break;
+
+      case "transcript.partial":
+        if (agentSpeaking) break;
+        if (!partialEl) {
+          partialEl = document.createElement("div");
+          partialEl.className = "bubble partial";
+          transcriptEl.appendChild(partialEl);
+        }
+        partialEl.textContent = msg.text;
+        transcriptEl.scrollTop = transcriptEl.scrollHeight;
+        break;
+
+      case "transcript.committed":
+        if (partialEl) { partialEl.remove(); partialEl = null; }
+        appendBubble(msg.text, "user");
+        setStatus("Processing…");
+        break;
+
+      case "tts.start":
+        agentSpeaking = true;
+        ringEl.classList.add("active");
+        setStatus("Agent speaking…");
+        setupPlayback();
+        break;
+
+      case "audio.chunk":
+        enqueueChunk(msg.audio);
+        break;
+
+      case "tts.end":
+        agentSpeaking = false;
+        ringEl.classList.remove("active");
+        setStatus("Listening…");
+        finishStream();
+        break;
+
+      case "booking.confirmed":
+        bannerEl.style.display = "block";
+        bannerEl.textContent = `✓ Appointment confirmed for ${msg.booking_time} (ref: ${msg.booking_id})`;
+        break;
+    }
+  }
+
+  // ── Audio capture ─────────────────────────────────────────────────────────
+  async function startAudioCapture() {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx    = new AudioContext();
+    await audioCtx.resume();
+
+    sourceNode = audioCtx.createMediaStreamSource(mediaStream);
+    scriptNode = audioCtx.createScriptProcessor(SCRIPT_BUF_SIZE, 1, 1);
+
+    // Prevent output — connect to a silent gain node
+    const silent = audioCtx.createGain();
+    silent.gain.value = 0;
+    scriptNode.connect(silent);
+    silent.connect(audioCtx.destination);
+    sourceNode.connect(scriptNode);
+
+    scriptNode.onaudioprocess = (e) => {
+      if (!sttReady || !ws || ws.readyState !== WebSocket.OPEN || agentSpeaking) return;
+
+      const raw         = e.inputBuffer.getChannelData(0);
+      const downsampled = downsample(raw, audioCtx.sampleRate, TARGET_SR);
+      if (downsampled.length < MIN_CHUNK_SAMPLES) return;
+
+      const pcm16 = floatTo16Bit(downsampled);
+      const b64   = int16ToBase64(pcm16);
+      ws.send(JSON.stringify({ type: "audio.chunk", audio: b64 }));
+
+      // ── Client-side VAD (Valsea only) ──────────────────────────────────
+      // Compute RMS amplitude of this chunk
+      let sum = 0;
+      for (let i = 0; i < raw.length; i++) sum += raw[i] * raw[i];
+      const rms = Math.sqrt(sum / raw.length);
+      const isSpeech = rms > VAD_SILENCE_RMS;
+
+      if (isSpeech) {
+        // Cancel any pending silence timer — user is still talking
+        if (vadSilenceTimer) { clearTimeout(vadSilenceTimer); vadSilenceTimer = null; }
+
+        if (!vadSpeaking) {
+          // Confirm speech isn't a transient noise by waiting a short window
+          if (!vadSpeechTimer) {
+            vadSpeechTimer = setTimeout(() => {
+              vadSpeaking    = true;
+              vadSpeechTimer = null;
+            }, VAD_SPEECH_CONFIRM_MS);
+          }
+        }
+      } else {
+        // Silence detected
+        if (vadSpeechTimer) { clearTimeout(vadSpeechTimer); vadSpeechTimer = null; }
+
+        if (vadSpeaking && !vadSilenceTimer) {
+          // User was speaking and now went quiet — start commit countdown
+          vadSilenceTimer = setTimeout(() => {
+            vadSpeaking   = false;
+            vadSilenceTimer = null;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "audio.commit" }));
+            }
+          }, VAD_SILENCE_MS);
+        }
+      }
+    };
+  }
+
+  function stopAudioCapture() {
+    if (vadSilenceTimer) { clearTimeout(vadSilenceTimer); vadSilenceTimer = null; }
+    if (vadSpeechTimer)  { clearTimeout(vadSpeechTimer);  vadSpeechTimer  = null; }
+    vadSpeaking = false;
+    if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
+    if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+    if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+    if (audioCtx)  { audioCtx.close(); audioCtx = null; }
+  }
+
+  // ── Call lifecycle ────────────────────────────────────────────────────────
+  async function startCall() {
+    callBtn.disabled = true;
+    sttReady      = false;
+    agentSpeaking = false;
+    bannerEl.style.display = "none";
+    transcriptEl.innerHTML = "";
+
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    ws          = new WebSocket(`${proto}://${location.host}/ws`);
+    ws.onmessage = handleMessage;
+    ws.onclose   = () => { if (isCallActive) endCall(false); };
+    ws.onerror   = () => setStatus("Connection error.");
+
+    await new Promise((resolve, reject) => {
+      ws.onopen  = resolve;
+      ws.onerror = reject;
+    });
+
+    isCallActive = true;
+    callBtn.disabled    = false;
+    callBtn.textContent = "End Call";
+    callBtn.classList.add("active");
+    setStatus("Connecting…");
+
+    try {
+      await startAudioCapture();
+    } catch (e) {
+      setStatus("Mic access denied — check browser permissions.");
+      endCall(true);
+    }
+  }
+
+  function endCall(sendHangup = true) {
+    isCallActive  = false;
+    sttReady      = false;
+    agentSpeaking = false;
+
+    stopAudioCapture();
+
+    if (sendHangup && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "hangup" }));
+    }
+    if (ws) { ws.close(); ws = null; }
+
+    if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
+
+    ringEl.classList.remove("active");
+    callBtn.textContent = "Start Call";
+    callBtn.classList.remove("active");
+    setStatus("Call ended.");
+  }
+
+  callBtn.addEventListener("click", () => {
+    if (isCallActive) endCall(); else startCall();
+  });
+</script>
+</body>
+</html>
